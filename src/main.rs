@@ -133,8 +133,8 @@ fn setup(state: &mut GameState, c: &mut EngineContext) {
 }
 
 fn update(state: &mut GameState, _c: &mut EngineContext) {
-    // create tree
     let cosmic_system = {
+        span_with_timing!("Create tree");
         let mut cosmic_system = CosmicSystem::new(state.bounding_box, state.bodies.len());
         for body in state.bodies.iter() {
             cosmic_system.add(body.celestial_object.clone());
@@ -146,6 +146,7 @@ fn update(state: &mut GameState, _c: &mut EngineContext) {
     // this is the bottleneck, but we only read things from the tree
     // so we can easily multithread it
     {
+        span_with_timing!("Compute forces");
         for body in state.bodies.iter_mut() {
             let force = cosmic_system.gravitational_force(&body.celestial_object);
             body.current_force = force;
@@ -155,6 +156,7 @@ fn update(state: &mut GameState, _c: &mut EngineContext) {
     // move bodies with the force
     // has to be done separately, because you can't move bodies while still computing gravity
     {
+        span_with_timing!("Update bodies");
         for body in state.bodies.iter_mut() {
             body.update();
         }
@@ -162,6 +164,7 @@ fn update(state: &mut GameState, _c: &mut EngineContext) {
 
     // Render
     {
+        span_with_timing!("Update world");
         let mut world = world_mut();
         let particles = world
             .query_one_mut::<&mut ParticleSystem>(state.particles)
