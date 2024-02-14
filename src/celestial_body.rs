@@ -10,6 +10,14 @@ pub struct CelestialBody {
     pub current_movement: DVec3,
 }
 
+impl CelestialBody {
+    pub fn update(&mut self) {
+        let delta = self.current_force * (1.0 / self.celestial_object.mass);
+        self.current_movement += delta;
+        self.celestial_object.position += self.current_movement;
+    }
+}
+
 pub struct CelestialBodyDrawing {
     /// for drawing the body.
     pub color: Color,
@@ -21,13 +29,5 @@ pub struct CelestialBodyDrawing {
 impl CelestialBodyDrawing {
     pub fn get_drawing_radius(&self) -> f32 {
         (self.radius.log10() * 0.02) as f32
-    }
-}
-
-impl CelestialBody {
-    pub fn update(&mut self) {
-        let delta = self.current_force * (1.0 / self.celestial_object.mass);
-        self.current_movement += delta;
-        self.celestial_object.position += self.current_movement;
     }
 }

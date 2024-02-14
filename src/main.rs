@@ -5,23 +5,24 @@ pub mod cosmic_system;
 pub mod simulation;
 pub mod vec3_extensions;
 
+use std::thread;
+
 use bounding_box::BoundingBox;
 use celestial_body::{CelestialBody, CelestialBodyDrawing};
 use celestial_object::CelestialObject;
 use comfy::{num_traits::Float, *};
 use cosmic_system::CosmicSystem;
 use glam::DVec3;
+use simulation::{create_bodies, update_bodies};
 
 simple_game!("Cosmic System", GameState, setup, update);
 
 pub struct GameState {
     pub bounding_box: BoundingBox,
-    pub bodies: Vec<CelestialBody>,
+    pub bodies: Arc<Mutex<Vec<CelestialBody>>>,
     pub particles: Entity,
+    pub handle: Option<thread::JoinHandle<()>>,
 }
-/*
-// Only if the tracing feature is enabled
-#[cfg(feature = "tracing")] */
 
 impl GameState {
     pub fn new(_c: &EngineState) -> Self {
@@ -30,22 +31,11 @@ impl GameState {
                 DVec3::ONE * -4.0 * simulation::AU,
                 DVec3::ONE * 4.0 * simulation::AU,
             ),
-            bodies: vec![],
+            bodies: Default::default(),
             particles: Entity::DANGLING,
+            handle: None,
         }
     }
-}
-/// Box-Muller transform
-/// https://en.wikipedia.org/wiki/Box%E2%80%93Muller_transform
-fn random_gaussian(mu: f64, sigma: f64) -> f64 {
-    let mut u1 = gen_range(0.0, 1.0);
-    while u1 == 0.0 {
-        u1 = gen_range(0.0, 1.0);
-    }
-    let u2 = gen_range(0.0, 1.0);
-
-    let mag = sigma * (-2.0 * u1.ln()).sqrt();
-    mag * (u2 * std::f64::consts::PI * 2.0).cos() + mu
 }
 
 fn setup(state: &mut GameState, c: &mut EngineContext) {
@@ -54,46 +44,10 @@ fn setup(state: &mut GameState, c: &mut EngineContext) {
         include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/1px.png")),
     );
 
-    let body_count = 10001;
-    srand(125245337);
-    let predefined_colors = vec![RED, BLUE, CYAN, MAGENTA, PINK, GREEN, DARK_GRAY];
-    let mut bodies = Vec::with_capacity(body_count);
-    let mut bodies_drawing = Vec::with_capacity(body_count);
-    for i in 0..body_count {
-        bodies.push(CelestialBody {
-            celestial_object: CelestialObject::new(
-                gen_range(5e20, 5e20 + 5e20),
-                DVec3::new(
-                    (random_gaussian(0., 1.) * 8. - 4.) * 0.01 + if i % 2 == 0 { 2. } else { -2. },
-                    (random_gaussian(0., 1.) * 8. - 4.) * 0.01,
-                    (random_gaussian(0., 1.) * 8. - 4.) * 0.01,
-                ) * simulation::AU,
-            ),
-            current_movement: DVec3::new(
-                random_gaussian(0., 1.),
-                random_gaussian(0., 1.),
-                random_gaussian(0., 1.),
-            ) * 1e9,
-            current_force: DVec3::ZERO,
-        });
-        bodies_drawing.push(CelestialBodyDrawing {
-            radius: gen_range(10000., 800000.),
-            color: predefined_colors[random_usize(0, predefined_colors.len())],
-        });
-    }
-    bodies[0] = CelestialBody {
-        celestial_object: CelestialObject::new(1e40, DVec3::ZERO),
-        current_movement: DVec3::ZERO,
-        current_force: DVec3::ZERO,
-    };
-    bodies_drawing[0] = CelestialBodyDrawing {
-        radius: 7000000000.,
-        color: WHITE,
-    };
-    state.bodies = bodies;
+    let (bodies, bodies_drawing) = create_bodies(10001);
 
     let particles = world().reserve_entity();
-    let mut particles_component = ParticleSystem::with_spawn_rate(body_count, 0.0, || Particle {
+    let mut particles_component = ParticleSystem::with_spawn_rate(bodies.len(), 0.0, || Particle {
         texture: texture_id("1px"),
         position: random_circle(5.0),
         //position: Vec2::ZERO,
@@ -130,38 +84,22 @@ fn setup(state: &mut GameState, c: &mut EngineContext) {
         )
         .unwrap();
     state.particles = particles;
+
+    state.bodies = Arc::new(Mutex::new(bodies));
+
+    let handle = {
+        let bodies = Arc::clone(&state.bodies);
+        let bounding_box = (&state.bounding_box).clone();
+        thread::spawn(move || loop {
+            let mut bodies_lock = bodies.lock();
+            update_bodies(bounding_box.clone(), &mut bodies_lock);
+        })
+    };
+
+    // state.handle = Some(handle);
 }
 
 fn update(state: &mut GameState, _c: &mut EngineContext) {
-    let cosmic_system = {
-        span_with_timing!("Create tree");
-        let mut cosmic_system = CosmicSystem::new(state.bounding_box, state.bodies.len());
-        for body in state.bodies.iter() {
-            cosmic_system.add(body.celestial_object.clone());
-        }
-        cosmic_system
-    };
-
-    // for each body: compute the total force exerted on it.
-    // this is the bottleneck, but we only read things from the tree
-    // so we can easily multithread it
-    {
-        span_with_timing!("Compute forces");
-        state.bodies.par_iter_mut().for_each(|body| {
-            let force = cosmic_system.gravitational_force(&body.celestial_object);
-            body.current_force = force;
-        });
-    }
-
-    // move bodies with the force
-    // has to be done separately, because you can't move bodies while still computing gravity
-    {
-        span_with_timing!("Update bodies");
-        for body in state.bodies.iter_mut() {
-            body.update();
-        }
-    }
-
     // Render
     {
         span_with_timing!("Update world");
@@ -170,7 +108,8 @@ fn update(state: &mut GameState, _c: &mut EngineContext) {
             .query_one_mut::<&mut ParticleSystem>(state.particles)
             .unwrap();
         let inverse_world_size = 1.0 / (1.0 * simulation::AU);
-        for (particle, body) in particles.particles.iter_mut().zip(state.bodies.iter()) {
+        let bodies_lock = state.bodies.lock();
+        for (particle, body) in particles.particles.iter_mut().zip(bodies_lock.iter()) {
             particle.lifetime_current = 500.;
             let position = body.celestial_object.position * inverse_world_size;
             particle.position = Vec2::new(position.x as f32, position.y as f32);
