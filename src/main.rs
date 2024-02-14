@@ -147,10 +147,10 @@ fn update(state: &mut GameState, _c: &mut EngineContext) {
     // so we can easily multithread it
     {
         span_with_timing!("Compute forces");
-        for body in state.bodies.iter_mut() {
+        state.bodies.par_iter_mut().for_each(|body| {
             let force = cosmic_system.gravitational_force(&body.celestial_object);
             body.current_force = force;
-        }
+        });
     }
 
     // move bodies with the force
