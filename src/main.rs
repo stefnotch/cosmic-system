@@ -6,10 +6,11 @@ pub mod simulation;
 pub mod vec3_extensions;
 
 use bounding_box::BoundingBox;
-use celestial_body::CelestialBody;
+use celestial_body::{CelestialBody, CelestialBodyDrawing};
 use celestial_object::CelestialObject;
-use comfy::*;
+use comfy::{num_traits::Float, *};
 use cosmic_system::CosmicSystem;
+use glam::DVec3;
 
 simple_game!("Cosmic System", GameState, setup, update);
 
@@ -26,8 +27,8 @@ impl GameState {
     pub fn new(_c: &EngineState) -> Self {
         Self {
             bounding_box: BoundingBox::new(
-                Vec3::ONE * -4.0 * simulation::AU,
-                Vec3::ONE * 4.0 * simulation::AU,
+                DVec3::ONE * -4.0 * simulation::AU,
+                DVec3::ONE * 4.0 * simulation::AU,
             ),
             bodies: vec![],
             particles: Entity::DANGLING,
@@ -36,15 +37,15 @@ impl GameState {
 }
 /// Box-Muller transform
 /// https://en.wikipedia.org/wiki/Box%E2%80%93Muller_transform
-fn random_gaussian(mu: f32, sigma: f32) -> f32 {
-    let mut u1 = random();
+fn random_gaussian(mu: f64, sigma: f64) -> f64 {
+    let mut u1 = gen_range(0.0, 1.0);
     while u1 == 0.0 {
-        u1 = random();
+        u1 = gen_range(0.0, 1.0);
     }
-    let u2 = random();
+    let u2 = gen_range(0.0, 1.0);
 
     let mag = sigma * (-2.0 * u1.ln()).sqrt();
-    mag * (u2 * std::f32::consts::PI * 2.0).cos() + mu
+    mag * (u2 * std::f64::consts::PI * 2.0).cos() + mu
 }
 
 fn setup(state: &mut GameState, c: &mut EngineContext) {
@@ -57,31 +58,36 @@ fn setup(state: &mut GameState, c: &mut EngineContext) {
     srand(125245337);
     let predefined_colors = vec![RED, BLUE, CYAN, MAGENTA, PINK, GREEN, DARK_GRAY];
     let mut bodies = Vec::with_capacity(body_count);
+    let mut bodies_drawing = Vec::with_capacity(body_count);
     for i in 0..body_count {
         bodies.push(CelestialBody {
             celestial_object: CelestialObject::new(
-                random_range(5e20, 5e20 + 5e20),
-                Vec3::new(
+                gen_range(5e20, 5e20 + 5e20),
+                DVec3::new(
                     (random_gaussian(0., 1.) * 8. - 4.) * 0.01 + if i % 2 == 0 { 2. } else { -2. },
                     (random_gaussian(0., 1.) * 8. - 4.) * 0.01,
                     (random_gaussian(0., 1.) * 8. - 4.) * 0.01,
                 ) * simulation::AU,
             ),
-            current_movement: Vec3::new(
+            current_movement: DVec3::new(
                 random_gaussian(0., 1.),
                 random_gaussian(0., 1.),
                 random_gaussian(0., 1.),
             ) * 1e9,
-            current_force: Vec3::ZERO,
-            radius: random_range(10000., 800000.),
+            current_force: DVec3::ZERO,
+        });
+        bodies_drawing.push(CelestialBodyDrawing {
+            radius: gen_range(10000., 800000.),
             color: predefined_colors[random_usize(0, predefined_colors.len())],
         });
     }
     bodies[0] = CelestialBody {
-        celestial_object: CelestialObject::new(1e24, Vec3::ZERO),
-        current_movement: Vec3::ZERO,
-        current_force: Vec3::ZERO,
-        radius: 7000000.,
+        celestial_object: CelestialObject::new(1e40, DVec3::ZERO),
+        current_movement: DVec3::ZERO,
+        current_force: DVec3::ZERO,
+    };
+    bodies_drawing[0] = CelestialBodyDrawing {
+        radius: 7000000000.,
         color: WHITE,
     };
     state.bodies = bodies;
@@ -110,7 +116,7 @@ fn setup(state: &mut GameState, c: &mut EngineContext) {
     for (particle, body) in particles_component
         .particles
         .iter_mut()
-        .zip(state.bodies.iter())
+        .zip(bodies_drawing.into_iter())
     {
         particle.size = Vec2::splat(body.get_drawing_radius());
         particle.color_start = body.color;
@@ -160,11 +166,11 @@ fn update(state: &mut GameState, _c: &mut EngineContext) {
         let particles = world
             .query_one_mut::<&mut ParticleSystem>(state.particles)
             .unwrap();
-        let inverse_world_size = 1.0 / (1.0 * simulation::AU);
+        let inverse_world_size = 1.0 / (8.0 * simulation::AU);
         for (particle, body) in particles.particles.iter_mut().zip(state.bodies.iter()) {
             particle.lifetime_current = particle.lifetime_max;
             let position = body.celestial_object.position * inverse_world_size;
-            particle.position = Vec2::new(position.x, position.y);
+            particle.position = Vec2::new(position.x as f32, position.y as f32);
         }
     }
 }

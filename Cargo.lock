@@ -592,6 +592,7 @@ name = "cosmic-system"
 version = "0.1.0"
 dependencies = [
  "comfy",
+ "glam 0.25.0",
 ]
 
 [[package]]

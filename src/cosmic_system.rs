@@ -1,14 +1,14 @@
-use comfy::Vec3;
+use glam::DVec3;
 
 use crate::{bounding_box::BoundingBox, celestial_object::CelestialObject, simulation};
 
 /// When distance/radius < T, then we can do that Barnes-Hut optimisation
-const T: f32 = 1.0;
-const T_SQUARED: f32 = T * T;
+const T: f64 = 1.0;
+const T_SQUARED: f64 = T * T;
 
 pub struct CosmicSystem {
     pub bounding_box: BoundingBox,
-    pub root: Option<CosmicSystemNode>,
+    root: Option<CosmicSystemNode>,
 }
 
 impl CosmicSystem {
@@ -19,10 +19,10 @@ impl CosmicSystem {
         }
     }
 
-    pub fn gravitational_force(&self, body: &CelestialObject) -> Vec3 {
+    pub fn gravitational_force(&self, body: &CelestialObject) -> DVec3 {
         match &self.root {
             Some(root) => root.gravitational_force(body) * simulation::G * body.mass,
-            None => Vec3::ZERO,
+            None => DVec3::ZERO,
         }
     }
 
@@ -40,13 +40,13 @@ impl CosmicSystem {
 
 struct CosmicSystemNode {
     pub value: CelestialObject,
-    pub side_length_squared: f32,
+    pub side_length_squared: f64,
     /// References would be better
     pub children: Option<Box<[Option<CosmicSystemNode>; 8]>>,
 }
 
 impl CosmicSystemNode {
-    pub fn new(value: CelestialObject, side_length: f32) -> Self {
+    pub fn new(value: CelestialObject, side_length: f64) -> Self {
         Self {
             value,
             side_length_squared: side_length * side_length,
@@ -54,7 +54,7 @@ impl CosmicSystemNode {
         }
     }
 
-    pub fn gravitational_force(&self, body: &CelestialObject) -> Vec3 {
+    pub fn gravitational_force(&self, body: &CelestialObject) -> DVec3 {
         // < T = Optimisation
         if self.side_length_squared < T_SQUARED * body.distance_to_squared(&self.value) {
             return self.value.gravitational_force(body);
@@ -100,32 +100,4 @@ impl CosmicSystemNode {
             ));
         }
     }
-
-    /*
-    public void add(CelestialObject celestialBody, BoundingBox box) {
-        if(isLeaf()) {
-            // This is a node at the bottom of our tree. Take this body and move it down as well
-            CelestialObject thisCelestialBody = this.value;
-
-            // TODO: Maybe catch the case where two bodies have the same paw-sition
-
-            subdivide();
-
-            int octant = box.getOctant(thisCelestialBody.getPosition());
-            children[octant] = new CosmicSystemNode(thisCelestialBody, box.sideLength() * 0.5);
-        }
-
-        // Compute the celestial object (combined bodies)
-        this.value = CelestialObject.fromObjects(this.value, celestialBody);
-
-        // This is a node in the middle of our tree. We need to go deeper
-
-        int octant = box.getOctant(celestialBody.getPosition());
-        if(children[octant] == null) {
-            children[octant] = new CosmicSystemNode(celestialBody, box.sideLength() * 0.5);
-        } else {
-            box.resizeToOctant(octant);
-            children[octant].add(celestialBody, box);
-        }
-    } */
 }

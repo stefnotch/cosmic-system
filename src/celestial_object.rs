@@ -1,13 +1,13 @@
-use comfy::Vec3;
+use glam::DVec3;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct CelestialObject {
-    pub mass: f32,
-    pub position: Vec3,
+    pub mass: f64,
+    pub position: DVec3,
 }
 
 impl CelestialObject {
-    pub fn new(mass: f32, position: Vec3) -> Self {
+    pub fn new(mass: f64, position: DVec3) -> Self {
         Self { mass, position }
     }
 
@@ -18,13 +18,13 @@ impl CelestialObject {
     }
 
     #[inline]
-    pub fn distance_to_squared(&self, other: &CelestialObject) -> f32 {
+    pub fn distance_to_squared(&self, other: &CelestialObject) -> f64 {
         (self.position - other.position).length_squared()
     }
 
-    pub fn gravitational_force(&self, other: &CelestialObject) -> Vec3 {
+    pub fn gravitational_force(&self, other: &CelestialObject) -> DVec3 {
         if other == self {
-            return Vec3::ZERO;
+            return DVec3::ZERO;
         }
         let delta = other.position - self.position;
         let squared_distance = delta.length_squared();

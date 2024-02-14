@@ -1,27 +1,27 @@
-use comfy::Vec3;
+use glam::DVec3;
 
 use crate::vec3_extensions::Vec3Extensions;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct BoundingBox {
-    pub min: Vec3,
-    pub max: Vec3,
+    pub min: DVec3,
+    pub max: DVec3,
 
     // TODO: Maybe remove
-    pub center: Vec3,
+    pub center: DVec3,
 }
 
 impl BoundingBox {
-    pub fn new(min: Vec3, max: Vec3) -> Self {
+    pub fn new(min: DVec3, max: DVec3) -> Self {
         let center = (max + min) / 2.0;
         Self { min, max, center }
     }
 
-    pub fn contains(&self, point: Vec3) -> bool {
+    pub fn contains(&self, point: DVec3) -> bool {
         !point.all_less_than(self.min) && point.all_less_than(self.max)
     }
 
-    pub fn get_octant(&self, point: Vec3) -> usize {
+    pub fn get_octant(&self, point: DVec3) -> usize {
         self.center.get_octant(point)
     }
 
@@ -45,12 +45,12 @@ impl BoundingBox {
         };
 
         Self::new(
-            Vec3::new(start_x, start_y, start_z),
-            Vec3::new(end_x, end_y, end_z),
+            DVec3::new(start_x, start_y, start_z),
+            DVec3::new(end_x, end_y, end_z),
         )
     }
 
-    pub fn side_length(&self) -> f32 {
+    pub fn side_length(&self) -> f64 {
         self.max.x - self.min.x
     }
 }
