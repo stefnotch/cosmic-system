@@ -166,9 +166,9 @@ fn update(state: &mut GameState, _c: &mut EngineContext) {
         let particles = world
             .query_one_mut::<&mut ParticleSystem>(state.particles)
             .unwrap();
-        let inverse_world_size = 1.0 / (8.0 * simulation::AU);
+        let inverse_world_size = 1.0 / (1.0 * simulation::AU);
         for (particle, body) in particles.particles.iter_mut().zip(state.bodies.iter()) {
-            particle.lifetime_current = particle.lifetime_max;
+            particle.lifetime_current = 500.;
             let position = body.celestial_object.position * inverse_world_size;
             particle.position = Vec2::new(position.x as f32, position.y as f32);
         }

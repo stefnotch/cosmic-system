@@ -57,7 +57,7 @@ impl CosmicSystemNode {
     pub fn gravitational_force(&self, body: &CelestialObject) -> DVec3 {
         // < T = Optimisation
         if self.side_length_squared < T_SQUARED * body.distance_to_squared(&self.value) {
-            return self.value.gravitational_force(body);
+            return body.gravitational_force(&self.value);
         }
         match &self.children {
             Some(children) => children
@@ -65,32 +65,35 @@ impl CosmicSystemNode {
                 .filter_map(|child| child.as_ref())
                 .map(|child| child.gravitational_force(body))
                 .sum(),
-            None => self.value.gravitational_force(body),
+            None => body.gravitational_force(&self.value),
         }
     }
 
     pub fn add(&mut self, body: CelestialObject, bounding_box: BoundingBox) {
-        let old_value = self.value;
-
         // Compute the new celestial object (combined bodies)
-        self.value = CelestialObject::from_objects(&self.value, &body);
+        let new_value = CelestialObject::from_objects(&self.value, &body);
 
-        // Deal with leaves
-        if self.children.is_none() {
-            const ARRAY_REPEAT_VALUE: Option<CosmicSystemNode> = None;
-            let mut new_children = Box::new([ARRAY_REPEAT_VALUE; 8]);
-            let octant = bounding_box.get_octant(old_value.position);
-            new_children[octant] = Some(CosmicSystemNode::new(
-                old_value,
-                bounding_box.side_length() * 0.5,
-            ));
+        // Get the children (and optionally subdivide the tree if necessary)
+        let children = match self.children {
+            Some(ref mut children) => children,
+            None => {
+                // This is a node at the bottom of our tree. Take this body and move it down as well
+                const ARRAY_REPEAT_VALUE: Option<CosmicSystemNode> = None;
+                let mut new_children = Box::new([ARRAY_REPEAT_VALUE; 8]);
+                let octant = bounding_box.get_octant(self.value.position);
+                new_children[octant] = Some(CosmicSystemNode::new(
+                    self.value,
+                    bounding_box.side_length() * 0.5,
+                ));
+                self.children = Some(new_children);
+                self.children.as_mut().unwrap()
+            }
+        };
 
-            self.children = Some(new_children);
-        }
+        self.value = new_value;
 
         // This is a node in the middle of our tree. We need to go deeper
         let octant = bounding_box.get_octant(body.position);
-        let children = self.children.as_mut().unwrap();
         if let Some(child) = &mut children[octant] {
             child.add(body, bounding_box.get_octant_bounding_box(octant));
         } else {

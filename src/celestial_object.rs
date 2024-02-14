@@ -19,7 +19,7 @@ impl CelestialObject {
 
     #[inline]
     pub fn distance_to_squared(&self, other: &CelestialObject) -> f64 {
-        (self.position - other.position).length_squared()
+        self.position.distance_squared(other.position)
     }
 
     pub fn gravitational_force(&self, other: &CelestialObject) -> DVec3 {
