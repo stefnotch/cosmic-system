@@ -43,7 +43,7 @@ pub fn create_bodies(body_count: usize) -> (Vec<CelestialBody>, Vec<CelestialBod
                 random_gaussian(0., 1.),
                 random_gaussian(0., 1.),
             ) * 1e9,
-            current_force: DVec3::ZERO,
+            current_force_zero_mass: DVec3::ZERO,
         });
         bodies_drawing.push(CelestialBodyDrawing {
             radius: gen_range(10000., 800000.),
@@ -53,7 +53,7 @@ pub fn create_bodies(body_count: usize) -> (Vec<CelestialBody>, Vec<CelestialBod
     bodies[0] = CelestialBody {
         celestial_object: CelestialObject::new(1e40, DVec3::ZERO),
         current_movement: DVec3::ZERO,
-        current_force: DVec3::ZERO,
+        current_force_zero_mass: DVec3::ZERO,
     };
     bodies_drawing[0] = CelestialBodyDrawing {
         radius: 7000000000.,
@@ -79,8 +79,8 @@ pub fn update_bodies(bounding_box: BoundingBox, bodies: &mut Vec<CelestialBody>)
     {
         let _span = span!("Compute forces");
         bodies.par_iter_mut().for_each(|body| {
-            let force = cosmic_system.gravitational_force(&body.celestial_object);
-            body.current_force = force;
+            let force = cosmic_system.gravitational_force_zero_mass(&body.celestial_object);
+            body.current_force_zero_mass = force;
         });
     }
 

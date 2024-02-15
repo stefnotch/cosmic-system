@@ -1,17 +1,9 @@
-pub mod bounding_box;
-pub mod celestial_body;
-pub mod celestial_object;
-pub mod cosmic_system;
-pub mod simulation;
-pub mod vec3_extensions;
-
+use cosmic_system::simulation;
 use std::thread;
 
-use bounding_box::BoundingBox;
-use celestial_body::{CelestialBody, CelestialBodyDrawing};
-use celestial_object::CelestialObject;
-use comfy::{num_traits::Float, *};
-use cosmic_system::CosmicSystem;
+use comfy::*;
+use cosmic_system::bounding_box::BoundingBox;
+use cosmic_system::celestial_body::CelestialBody;
 use glam::DVec3;
 use simulation::{create_bodies, update_bodies};
 
@@ -96,7 +88,7 @@ fn setup(state: &mut GameState, c: &mut EngineContext) {
         })
     };
 
-    // state.handle = Some(handle);
+    state.handle = Some(handle);
 }
 
 fn update(state: &mut GameState, _c: &mut EngineContext) {

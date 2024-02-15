@@ -10,8 +10,16 @@ comfy = "0.3.1"
 glam = "0.25.0"
 
 [features]
-default = ["tracing"]
+default = []
 tracing = ["comfy/tracy"]
+
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "my_benchmark"
+harness = false
+
 
 [profile.dev]
 opt-level = 1
