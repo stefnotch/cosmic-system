@@ -23,7 +23,7 @@ impl CosmicSystem {
     }
 
     pub fn gravitational_force_zero_mass(&self, body: &CelestialObject) -> DVec3 {
-        self.root.gravitational_force(body) * simulation::G
+        self.root.gravitational_force(body).unwrap_or_default() * simulation::G
     }
 
     pub fn add(&mut self, body: CelestialObject) {
@@ -67,10 +67,10 @@ impl CosmicSystemNode {
         }
     }
 
-    pub fn gravitational_force(&self, body: &CelestialObject) -> DVec3 {
+    pub fn gravitational_force(&self, body: &CelestialObject) -> Option<DVec3> {
         match self {
-            CosmicSystemNode::Empty => DVec3::ZERO,
-            CosmicSystemNode::Leaf { value, .. } => body.gravitational_force_zero_mass(value),
+            CosmicSystemNode::Empty => None,
+            CosmicSystemNode::Leaf { value, .. } => Some(body.gravitational_force_zero_mass(value)),
             CosmicSystemNode::Internal {
                 value,
                 comparison_factor,
@@ -81,12 +81,14 @@ impl CosmicSystemNode {
                 // width^2 < T^2 * distance^2 = Optimisation
                 // width^2 * (1/T^2) < distance^2 = Optimisation
                 if *comparison_factor < body.distance_to_squared(value) {
-                    body.gravitational_force_zero_mass(value)
+                    Some(body.gravitational_force_zero_mass(value))
                 } else {
-                    children
-                        .iter()
-                        .map(|child| child.gravitational_force(body))
-                        .sum()
+                    Some(
+                        children
+                            .iter()
+                            .filter_map(|child| child.gravitational_force(body))
+                            .sum(),
+                    )
                 }
             }
         }
@@ -107,7 +109,7 @@ impl CosmicSystemNode {
                 let octant = get_octant(&mut existing_z_order);
                 new_children[octant] = CosmicSystemNode::new_leaf(value.clone(), existing_z_order);
 
-                *self = CosmicSystemNode::new_internal(new_value, side_length / 2.0, new_children);
+                *self = CosmicSystemNode::new_internal(new_value, side_length, new_children);
 
                 // Add the new body
                 self.add(body, z_order, side_length);
