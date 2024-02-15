@@ -11,99 +11,127 @@ const INV_T_SQUARED: f64 = 1.0 / (T * T);
 
 pub struct CosmicSystem {
     pub bounding_box: BoundingBox,
-    root: Option<CosmicSystemNode>,
+    root: CosmicSystemNode,
 }
 
 impl CosmicSystem {
     pub fn new(bounding_box: BoundingBox, _capacity: usize) -> Self {
         Self {
             bounding_box,
-            root: None,
+            root: CosmicSystemNode::Empty,
         }
     }
 
     pub fn gravitational_force_zero_mass(&self, body: &CelestialObject) -> DVec3 {
-        match &self.root {
-            Some(root) => root.gravitational_force(body) * simulation::G,
-            None => DVec3::ZERO,
-        }
+        self.root.gravitational_force(body).unwrap_or_default() * simulation::G
     }
 
     pub fn add(&mut self, body: CelestialObject) {
         if !self.bounding_box.contains(body.position) {
             return;
         }
-        if let Some(root) = &mut self.root {
-            root.add(body, self.bounding_box.clone());
-        } else {
-            self.root = Some(CosmicSystemNode::new(body, self.bounding_box.side_length()));
-        }
+        let z_order = z_order_curve(body.position, self.bounding_box);
+        self.root
+            .add(body, z_order, self.bounding_box.side_length());
     }
 }
 
-struct CosmicSystemNode {
-    pub value: CelestialObject,
-    pub side_length_squared: f64,
-    /// References would be better
-    pub children: Option<Box<[Option<CosmicSystemNode>; 8]>>,
+enum CosmicSystemNode {
+    Empty,
+    Leaf {
+        value: CelestialObject,
+        /// Remaining bits of the z-order
+        z_order: u128,
+    },
+    Internal {
+        value: CelestialObject,
+        comparison_factor: f64,
+        children: Box<[CosmicSystemNode; 8]>,
+    },
 }
 
 impl CosmicSystemNode {
-    pub fn new(value: CelestialObject, side_length: f64) -> Self {
-        Self {
+    pub fn new_leaf(value: CelestialObject, z_order: u128) -> Self {
+        Self::Leaf { value, z_order }
+    }
+
+    pub fn new_internal(
+        value: CelestialObject,
+        side_length: f64,
+        children: Box<[CosmicSystemNode; 8]>,
+    ) -> Self {
+        Self::Internal {
             value,
-            side_length_squared: side_length * side_length * INV_T_SQUARED,
-            children: None,
+            comparison_factor: side_length * side_length * INV_T_SQUARED,
+            children,
         }
     }
 
-    pub fn gravitational_force(&self, body: &CelestialObject) -> DVec3 {
-        // < T = Optimisation
-        if self.side_length_squared < body.distance_to_squared(&self.value) {
-            return body.gravitational_force_zero_mass(&self.value);
-        }
-        match &self.children {
-            Some(children) => children
-                .iter()
-                .filter_map(|child| child.as_ref())
-                .map(|child| child.gravitational_force(body))
-                .sum(),
-            None => body.gravitational_force_zero_mass(&self.value),
-        }
-    }
-
-    pub fn add(&mut self, body: CelestialObject, bounding_box: BoundingBox) {
-        // Compute the new celestial object (combined bodies)
-        let new_value = CelestialObject::from_objects(&self.value, &body);
-
-        // Get the children (and optionally subdivide the tree if necessary)
-        let children = match self.children {
-            Some(ref mut children) => children,
-            None => {
-                // This is a node at the bottom of our tree. Take this body and move it down as well
-                const ARRAY_REPEAT_VALUE: Option<CosmicSystemNode> = None;
-                let mut new_children = Box::new([ARRAY_REPEAT_VALUE; 8]);
-                let octant = bounding_box.get_octant(self.value.position);
-                new_children[octant] = Some(CosmicSystemNode::new(
-                    self.value,
-                    bounding_box.side_length() * 0.5,
-                ));
-                self.children = Some(new_children);
-                self.children.as_mut().unwrap()
+    pub fn gravitational_force(&self, body: &CelestialObject) -> Option<DVec3> {
+        match self {
+            CosmicSystemNode::Empty => None,
+            CosmicSystemNode::Leaf { value, .. } => Some(body.gravitational_force_zero_mass(value)),
+            CosmicSystemNode::Internal {
+                value,
+                comparison_factor,
+                children,
+            } => {
+                // width / distance < T = Optimisation
+                // width^2 / distance^2 < T^2 = Optimisation
+                // width^2 < T^2 * distance^2 = Optimisation
+                // width^2 * (1/T^2) < distance^2 = Optimisation
+                if *comparison_factor < body.distance_to_squared(value) {
+                    Some(body.gravitational_force_zero_mass(value))
+                } else {
+                    Some(
+                        children
+                            .iter()
+                            .filter_map(|child| child.gravitational_force(body))
+                            .sum(),
+                    )
+                }
             }
-        };
-
-        self.value = new_value;
-
-        // This is a node in the middle of our tree. We need to go deeper
-        let octant = bounding_box.get_octant(body.position);
-        if let Some(child) = &mut children[octant] {
-            child.add(body, bounding_box.get_octant_bounding_box(octant));
-        } else {
-            children[octant] = Some(CosmicSystemNode::new(
-                body,
-                bounding_box.side_length() * 0.5,
-            ));
         }
     }
+
+    pub fn add(&mut self, body: CelestialObject, z_order: u128, side_length: f64) {
+        match self {
+            CosmicSystemNode::Empty => *self = CosmicSystemNode::new_leaf(body, z_order),
+            CosmicSystemNode::Leaf {
+                value,
+                z_order: mut existing_z_order,
+            } => {
+                // Leaf nodes get subdivided into internal nodes
+                let new_value = CelestialObject::from_objects(value, &body);
+                const ARRAY_REPEAT_VALUE: CosmicSystemNode = CosmicSystemNode::Empty;
+                let mut new_children = Box::new([ARRAY_REPEAT_VALUE; 8]);
+
+                let octant = get_octant(&mut existing_z_order);
+                new_children[octant] = CosmicSystemNode::new_leaf(value.clone(), existing_z_order);
+
+                *self = CosmicSystemNode::new_internal(new_value, side_length, new_children);
+
+                // Add the new body
+                self.add(body, z_order, side_length);
+            }
+            CosmicSystemNode::Internal {
+                value, children, ..
+            } => {
+                *value = CelestialObject::from_objects(value, &body);
+
+                // This is a node in the middle of our tree. We need to go deeper
+                let mut z_order = z_order;
+                let octant = get_octant(&mut z_order);
+                children[octant].add(body, z_order, side_length / 2.0);
+            }
+        }
+    }
+}
+
+#[inline]
+fn get_octant(z_order: &mut u128) -> usize {
+    // take most significant 3 bits
+    let octant = *z_order >> 125;
+    *z_order <<= 3;
+    octant as usize
 }
