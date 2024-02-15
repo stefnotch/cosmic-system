@@ -62,7 +62,7 @@ impl CosmicSystemNode {
     ) -> Self {
         Self::Internal {
             value,
-            comparison_factor: side_length * side_length / INV_T_SQUARED,
+            comparison_factor: side_length * side_length * INV_T_SQUARED,
             children,
         }
     }
