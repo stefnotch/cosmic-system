@@ -78,8 +78,10 @@ pub struct UpdateBodies {
 impl UpdateBodies {
     pub fn update(&mut self, bodies: &mut Vec<CelestialBody>) {
         let cosmic_system = &mut self.cosmic_system;
-        cosmic_system.set_all(bodies);
-
+        {
+            let _span = span!("Update tree");
+            cosmic_system.set_all(bodies);
+        }
         let mut forces_vec = vec![];
 
         // for each body: compute the total force exerted on it.
