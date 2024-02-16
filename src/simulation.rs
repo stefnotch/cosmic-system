@@ -2,11 +2,10 @@ use crate::{
     bounding_box::BoundingBox,
     celestial_body::CelestialBody,
     celestial_body_extensions::{CelestialBodyDrawing, CelestialBodyForces},
-    cosmic_system::CosmicSystem,
+    cosmic_system_2::CosmicSystem,
 };
 use comfy::{num_traits::Float, *};
 use glam::DVec3;
-use rayon::prelude::*;
 pub const G: f64 = 6.6743e-11;
 pub const AU: f64 = 150e9;
 
@@ -23,13 +22,14 @@ fn random_gaussian(mu: f64, sigma: f64) -> f64 {
     mag * (u2 * std::f64::consts::PI * 2.0).cos() + mu
 }
 
-pub fn create_bodies(
-    body_count: usize,
-) -> (
-    Vec<CelestialBody>,
-    Vec<CelestialBodyForces>,
-    Vec<CelestialBodyDrawing>,
-) {
+pub struct CreateBodiesResult {
+    pub cosmic_system: CosmicSystem,
+    pub bodies: Vec<CelestialBody>,
+    pub bodies_forces: Vec<CelestialBodyForces>,
+    pub bodies_drawing: Vec<CelestialBodyDrawing>,
+}
+
+pub fn create_bodies(body_count: usize) -> CreateBodiesResult {
     srand(125245337);
     let predefined_colors = vec![RED, BLUE, CYAN, MAGENTA, PINK, GREEN, DARK_GRAY];
     let mut bodies = Vec::with_capacity(body_count);
@@ -67,44 +67,53 @@ pub fn create_bodies(
         color: WHITE,
     };
 
-    (bodies, bodies_forces, bodies_drawing)
+    let cosmic_system = CosmicSystem::new(
+        BoundingBox::new(DVec3::ONE * -4.0 * AU, DVec3::ONE * 4.0 * AU),
+        bodies.len(),
+    );
+
+    CreateBodiesResult {
+        cosmic_system,
+        bodies,
+        bodies_forces,
+        bodies_drawing,
+    }
 }
 
-pub fn update_bodies(
-    bounding_box: BoundingBox,
-    bodies: &mut Vec<CelestialBody>,
-    bodies_forces: &mut Vec<CelestialBodyForces>,
-) {
-    let cosmic_system = {
-        let _span = span!("Create tree");
-        let mut cosmic_system = CosmicSystem::new(bounding_box, bodies.len());
-        for body in bodies.iter() {
-            cosmic_system.add(body.clone());
+#[derive(Clone)]
+pub struct UpdateBodies {
+    pub bounding_box: BoundingBox,
+    pub cosmic_system: CosmicSystem,
+    pub bodies_forces: Vec<CelestialBodyForces>,
+}
+
+impl UpdateBodies {
+    pub fn update(&mut self, bodies: &mut Vec<CelestialBody>) {
+        let cosmic_system = &mut self.cosmic_system;
+        cosmic_system.set_all(bodies);
+
+        // for each body: compute the total force exerted on it.
+        // this is the bottleneck, but we only read things from the tree
+        // so we can easily multithread it
+        {
+            let _span = span!("Compute forces");
+            (&*bodies, &mut *self.bodies_forces)
+                .into_par_iter()
+                .for_each(|(body, body_forces)| {
+                    body_forces.current_force_zero_mass =
+                        cosmic_system.gravitational_force_zero_mass(&body, &bodies);
+                });
         }
-        cosmic_system
-    };
 
-    // for each body: compute the total force exerted on it.
-    // this is the bottleneck, but we only read things from the tree
-    // so we can easily multithread it
-    {
-        let _span = span!("Compute forces");
-        (&*bodies, &mut *bodies_forces)
-            .into_par_iter()
-            .for_each(|(body, body_forces)| {
-                body_forces.current_force_zero_mass =
-                    cosmic_system.gravitational_force_zero_mass(&body);
-            });
-    }
-
-    // move bodies with the force
-    // has to be done separately, because you can't move bodies while still computing gravity
-    {
-        let _span = span!("Update bodies");
-        (&mut *bodies, &mut *bodies_forces)
-            .into_par_iter()
-            .for_each(|(body, body_forces)| {
-                body_forces.update(body);
-            });
+        // move bodies with the force
+        // has to be done separately, because you can't move bodies while still computing gravity
+        {
+            let _span = span!("Update bodies");
+            (&mut *bodies, &mut *self.bodies_forces)
+                .into_par_iter()
+                .for_each(|(body, body_forces)| {
+                    body_forces.update(body);
+                });
+        }
     }
 }
