@@ -45,10 +45,12 @@ impl CelestialBody {
         delta * force
     }
 
+    #[inline]
     pub fn add_force(&mut self, force: DVec3) {
         self.current_movement += force;
     }
 
+    #[inline]
     pub fn update(&mut self) {
         self.position += self.current_movement;
     }

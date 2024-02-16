@@ -90,6 +90,7 @@ fn setup(state: &mut GameState, c: &mut EngineContext) {
         let mut update_bodies = UpdateBodies {
             bounding_box: (&state.bounding_box).clone(),
             cosmic_system,
+            forces: Vec::with_capacity(bodies.lock().len()),
         };
 
         thread::spawn(move || loop {

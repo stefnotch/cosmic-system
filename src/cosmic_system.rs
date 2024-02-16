@@ -1,4 +1,6 @@
-use comfy::{IntoParallelRefMutIterator, ParallelIterator, ParallelSliceMut};
+use comfy::{
+    IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator, ParallelSliceMut,
+};
 use glam::DVec3;
 
 use crate::{
@@ -45,6 +47,38 @@ impl CosmicSystem {
         // And then we go up to k / 2, where the bottom - 2 layer nodes come.
         let mut k = self.nodes.len() / 2;
         // We manually do the first iteration (bodies)
+        let mut k_end = k + bodies.len() / 2;
+        (&mut self.nodes[k..k_end])
+            .par_iter_mut()
+            .enumerate()
+            .for_each(|(index, node)| {
+                // Left and right bodies exist
+                let left_body = &bodies[2 * index];
+                let right_body = &bodies[2 * index + 1];
+                let index_of_1 = index_of_1(left_body.key, right_body.key);
+                *node = CosmicSystemNode::from_bodies(
+                    left_body,
+                    right_body,
+                    index_of_1,
+                    &self.bounding_box,
+                );
+            });
+        if bodies.len() % 2 == 1 {
+            // Only left body exists
+            let left_body = bodies.last().unwrap();
+            self.nodes[k_end] = CosmicSystemNode {
+                position: left_body.position,
+                mass: left_body.mass,
+                z_order: left_body.key,
+                index_of_1: u8::MAX,
+                comparison_factor: -1.0,
+            };
+            k_end += 1;
+        }
+        self.nodes[k_end..].fill(Default::default());
+
+        // Sequential code
+        /*
         for i in 0..k {
             let node_index = k + i;
             self.nodes[node_index] = if 2 * i + 1 < bodies.len() {
@@ -66,7 +100,7 @@ impl CosmicSystem {
                 // No bodies exist
                 Default::default()
             }
-        }
+        } */
         k /= 2;
 
         // And then the loop takes over (nodes)
@@ -123,9 +157,9 @@ impl CosmicSystem {
             let node_body = node.body();
             assert!(node.mass > 0.0);
 
-            if node.comparison_factor < body.distance_to_squared(&node_body) {
+            if node.comparison_factor < 0.0 {
                 body.gravitational_force_zero_mass(&node_body)
-            } else if node.comparison_factor < 0.0 {
+            } else if node.comparison_factor < body.distance_to_squared(&node_body) {
                 body.gravitational_force_zero_mass(&node_body)
             } else {
                 assert!(node.comparison_factor >= 0.0);

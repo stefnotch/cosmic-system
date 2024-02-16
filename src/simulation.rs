@@ -74,6 +74,7 @@ pub fn create_bodies(body_count: usize) -> CreateBodiesResult {
 pub struct UpdateBodies {
     pub bounding_box: BoundingBox,
     pub cosmic_system: CosmicSystem,
+    pub forces: Vec<DVec3>,
 }
 
 impl UpdateBodies {
@@ -83,7 +84,6 @@ impl UpdateBodies {
             let _span = span!("Update tree");
             cosmic_system.set_all(bodies);
         }
-        let mut forces_vec = vec![];
 
         // for each body: compute the total force exerted on it.
         // this is the bottleneck, but we only read things from the tree
@@ -93,7 +93,7 @@ impl UpdateBodies {
             bodies
                 .par_iter()
                 .map(|body| cosmic_system.gravitational_force_zero_mass(&body, &bodies))
-                .collect_into_vec(&mut forces_vec);
+                .collect_into_vec(&mut self.forces);
         }
 
         // move bodies with the force
@@ -102,7 +102,7 @@ impl UpdateBodies {
             let _span = span!("Update bodies");
             bodies
                 .par_iter_mut()
-                .zip(forces_vec.par_iter())
+                .zip(self.forces.par_iter())
                 .for_each(|(body, force)| {
                     body.add_force(*force);
                     body.update();
