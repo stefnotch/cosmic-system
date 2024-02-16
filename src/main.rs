@@ -41,6 +41,7 @@ fn setup(state: &mut GameState, c: &mut EngineContext) {
     let CreateBodiesResult {
         cosmic_system,
         bodies,
+        movements,
         bodies_drawing,
     } = create_bodies(10001);
 
@@ -91,6 +92,7 @@ fn setup(state: &mut GameState, c: &mut EngineContext) {
             bounding_box: (&state.bounding_box).clone(),
             cosmic_system,
             forces: Vec::with_capacity(bodies.lock().len()),
+            movements,
         };
 
         thread::spawn(move || loop {

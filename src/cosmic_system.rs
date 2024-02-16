@@ -234,7 +234,6 @@ impl CosmicSystemNode {
             position: self.position,
             mass: self.mass,
             key: self.z_order,
-            current_movement: DVec3::ZERO,
         }
     }
 
@@ -259,7 +258,6 @@ impl CosmicSystemNode {
             mass,
             position,
             key,
-            current_movement: DVec3::ZERO,
         };
 
         // If nodes have the same key, then index_of_1 is u8::MAX, which the comparison_factor function handles

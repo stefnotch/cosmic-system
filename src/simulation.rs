@@ -24,12 +24,14 @@ pub struct CreateBodiesResult {
     pub cosmic_system: CosmicSystem,
     pub bodies: Vec<CelestialBody>,
     pub bodies_drawing: Vec<CelestialBodyDrawing>,
+    pub movements: Vec<DVec3>,
 }
 
 pub fn create_bodies(body_count: usize) -> CreateBodiesResult {
     srand(125245337);
     let predefined_colors = vec![RED, BLUE, CYAN, MAGENTA, PINK, GREEN, DARK_GRAY];
     let mut bodies = Vec::with_capacity(body_count);
+    let mut movements = Vec::with_capacity(body_count);
     let mut bodies_drawing = Vec::with_capacity(body_count);
     for i in 0..body_count {
         bodies.push(CelestialBody::new(
@@ -40,19 +42,22 @@ pub fn create_bodies(body_count: usize) -> CreateBodiesResult {
                 (random_gaussian(0., 1.) * 8. - 4.) * 0.01,
                 (random_gaussian(0., 1.) * 8. - 4.) * 0.01,
             ) * crate::simulation::AU,
+        ));
+        movements.push(
             DVec3::new(
                 random_gaussian(0., 1.),
                 random_gaussian(0., 1.),
                 random_gaussian(0., 1.),
             ) * 1e9,
-        ));
+        );
 
         bodies_drawing.push(CelestialBodyDrawing {
             radius: gen_range(10000., 800000.),
             color: predefined_colors[random_usize(0, predefined_colors.len())],
         });
     }
-    bodies[0] = CelestialBody::new(0, 1e40, DVec3::ZERO, DVec3::ZERO);
+    bodies[0] = CelestialBody::new(0, 1e40, DVec3::ZERO);
+    movements[0] = DVec3::ZERO;
     bodies_drawing[0] = CelestialBodyDrawing {
         radius: 7000000000.,
         color: WHITE,
@@ -63,9 +68,13 @@ pub fn create_bodies(body_count: usize) -> CreateBodiesResult {
         bodies.len(),
     );
 
+    assert_eq!(bodies.len(), movements.len());
+    assert_eq!(bodies.len(), bodies_drawing.len());
+
     CreateBodiesResult {
         cosmic_system,
         bodies,
+        movements,
         bodies_drawing,
     }
 }
@@ -75,6 +84,7 @@ pub struct UpdateBodies {
     pub bounding_box: BoundingBox,
     pub cosmic_system: CosmicSystem,
     pub forces: Vec<DVec3>,
+    pub movements: Vec<DVec3>,
 }
 
 impl UpdateBodies {
@@ -100,13 +110,11 @@ impl UpdateBodies {
         // has to be done separately, because you can't move bodies while still computing gravity
         {
             let _span = span!("Update bodies");
-            bodies
-                .par_iter_mut()
-                .zip(self.forces.par_iter())
-                .for_each(|(body, force)| {
-                    body.add_force(*force);
-                    body.update();
-                });
+            for i in 0..bodies.len() {
+                let index = bodies[i].index;
+                self.movements[index] += self.forces[i];
+                bodies[i].update(self.movements[index]);
+            }
         }
     }
 }
