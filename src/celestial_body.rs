@@ -31,11 +31,12 @@ impl CelestialBody {
 
     /// Assume that self has zero mass.
     pub fn gravitational_force_zero_mass(&self, other: &CelestialBody) -> DVec3 {
-        let delta = other.position - self.position;
-        let squared_distance = delta.length_squared();
-        if squared_distance == 0.0 {
+        if self.key == other.key {
             return DVec3::ZERO;
         }
+
+        let delta = other.position - self.position;
+        let squared_distance = delta.length_squared();
         let force = other.mass / (squared_distance * squared_distance.sqrt());
         delta * force
     }

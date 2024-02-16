@@ -38,11 +38,6 @@ impl CosmicSystem {
         });
         bodies.par_sort();
 
-        // Clear nodes (just in case)
-        // for node in self.nodes.iter_mut() {
-        //     *node = Default::default();
-        // }
-
         // We basically start in the middle.
         // All the bottom - 1 layer nodes come here
         // And then we go up to k / 2, where the bottom - 2 layer nodes come.
@@ -50,37 +45,24 @@ impl CosmicSystem {
         // We manually do the first iteration (bodies)
         for i in 0..k {
             let node_index = k + i;
-            if 2 * i + 1 < bodies.len() {
+            self.nodes[node_index] = if 2 * i + 1 < bodies.len() {
                 // Left and right bodies exist
                 let left_body = &bodies[2 * i];
                 let right_body = &bodies[2 * i + 1];
-                let merged = CelestialBody::from_objects(left_body, right_body);
                 let index_of_1 = index_of_1(left_body.key, right_body.key);
-                self.nodes[node_index] = CosmicSystemNode {
-                    position: merged.position,
-                    mass: merged.mass,
-                    z_order: left_body.key,
-                    index_of_1,
-                    comparison_factor: comparison_factor(index_of_1, &self.bounding_box),
-                };
+                CosmicSystemNode::from_bodies(left_body, right_body, index_of_1, &self.bounding_box)
             } else if 2 * i < bodies.len() {
                 // Only left body exists
-                self.nodes[node_index] = CosmicSystemNode {
+                CosmicSystemNode {
                     position: bodies[2 * i].position,
                     mass: bodies[2 * i].mass,
                     z_order: bodies[2 * i].key,
                     index_of_1: u8::MAX,
                     comparison_factor: -1.0,
-                };
+                }
             } else {
                 // No bodies exist
-                self.nodes[node_index] = CosmicSystemNode {
-                    position: DVec3::ZERO,
-                    mass: 0.0,
-                    z_order: 0,
-                    index_of_1: u8::MAX,
-                    comparison_factor: -1.0,
-                };
+                Default::default()
             }
         }
         k /= 2;
@@ -92,25 +74,25 @@ impl CosmicSystem {
                 let left_node = &self.nodes[2 * node_index];
                 let right_node = &self.nodes[2 * node_index + 1];
 
-                if left_node.mass > 0.0 && right_node.mass > 0.0 {
-                    // Left and right nodes truly exist
-                    let merged = CelestialBody::from_objects(&left_node.body(), &right_node.body());
+                self.nodes[node_index] = if left_node.mass > 0.0 && right_node.mass > 0.0 {
                     let index_of_1 = index_of_1(left_node.z_order, right_node.z_order)
                         .min(left_node.index_of_1.min(right_node.index_of_1));
-                    self.nodes[node_index] = CosmicSystemNode {
-                        position: merged.position,
-                        mass: merged.mass,
-                        z_order: left_node.z_order,
+
+                    CosmicSystemNode::from_bodies(
+                        &left_node.body(),
+                        &right_node.body(),
                         index_of_1,
-                        comparison_factor: comparison_factor(index_of_1, &self.bounding_box),
-                    };
+                        &self.bounding_box,
+                    )
                 } else if left_node.mass > 0.0 {
                     // Only left node truly exists
-                    self.nodes[node_index] = std::mem::take(&mut self.nodes[2 * node_index]);
+                    let mut node = std::mem::take(&mut self.nodes[2 * node_index]);
+                    node.comparison_factor = -1.0;
+                    node
                 } else {
                     // No nodes actually exist
-                    self.nodes[node_index] = Default::default();
-                }
+                    Default::default()
+                };
             }
 
             k /= 2;
@@ -136,9 +118,14 @@ impl CosmicSystem {
 
             let node = &nodes[k];
             let node_body = node.body();
+            assert!(node.mass > 0.0);
+
             if node.comparison_factor < body.distance_to_squared(&node_body) {
                 body.gravitational_force_zero_mass(&node_body)
+            } else if node.comparison_factor < 0.0 {
+                body.gravitational_force_zero_mass(&node_body)
             } else {
+                assert!(node.comparison_factor >= 0.0);
                 // Always valid indices, because a node always has 2 children
                 // (If it only had one body as its child, then it would have a comparison_factor to -1, causing the function to return before getting here)
                 helper(2 * k, body, nodes, bodies) + helper(2 * k + 1, body, nodes, bodies)
@@ -150,13 +137,12 @@ impl CosmicSystem {
 }
 
 /// Index of the bit where the z-orders differ
-fn index_of_1(a: u128, b: u128) -> Option<u8> {
+fn index_of_1(a: u128, b: u128) -> u8 {
     let index_of_1 = (a ^ b).leading_zeros() as u8;
-    if index_of_1 == 128 {
-        // Special case where the nodes occupy the same space
-        None
+    if index_of_1 < 128 {
+        index_of_1
     } else {
-        Some(index_of_1)
+        u8::MAX
     }
 }
 
@@ -168,11 +154,15 @@ fn side_length(number_of_splits: u8, bounding_box: &BoundingBox) -> f64 {
 
 /// Comparison factor for barnes hut
 fn comparison_factor(number_of_splits: u8, bounding_box: &BoundingBox) -> f64 {
-    assert!(number_of_splits <= 128);
-    if number_of_splits >= 128 {
-        // Special case where the nodes occupy the same space
+    if number_of_splits == u8::MAX {
+        // Special case where the nodes have the same key
         return -1.0;
     }
+    assert!(
+        number_of_splits < 128,
+        "number_of_splits: {}",
+        number_of_splits
+    );
     let side_length = side_length(number_of_splits, bounding_box);
     side_length * side_length * INV_T_SQUARED
 }
@@ -203,7 +193,32 @@ impl CosmicSystemNode {
         CelestialBody {
             position: self.position,
             mass: self.mass,
-            key: 0,
+            key: self.z_order,
+        }
+    }
+
+    pub fn from_bodies(
+        a: &CelestialBody,
+        b: &CelestialBody,
+        index_of_1: u8,
+        bounding_box: &BoundingBox,
+    ) -> Self {
+        let mass = a.mass + b.mass;
+        assert!(mass > 0.0);
+        let position = (a.position * (a.mass / mass)) + (b.position * (b.mass / mass));
+        let merged = CelestialBody {
+            mass,
+            position,
+            key: a.key,
+        };
+
+        // Special case where the nodes have the same key: We merge them. (comparison_factor has that logic)
+        CosmicSystemNode {
+            position: merged.position,
+            mass: merged.mass,
+            z_order: merged.key,
+            index_of_1,
+            comparison_factor: comparison_factor(index_of_1, &bounding_box),
         }
     }
 }
@@ -236,24 +251,15 @@ mod tests {
         );
 
         assert_eq!(
-            side_length(
-                index_of_1(0b1000 << 124, 0b0101 << 124).unwrap(),
-                &bounding_box
-            ),
+            side_length(index_of_1(0b1000 << 124, 0b0101 << 124), &bounding_box),
             bounding_box.side_length()
         );
         assert_eq!(
-            side_length(
-                index_of_1(0b1000 << 124, 0b1101 << 124).unwrap(),
-                &bounding_box
-            ),
+            side_length(index_of_1(0b1000 << 124, 0b1101 << 124), &bounding_box),
             bounding_box.side_length()
         );
         assert_eq!(
-            side_length(
-                index_of_1(0b1000 << 124, 0b1001 << 124).unwrap(),
-                &bounding_box
-            ),
+            side_length(index_of_1(0b1000 << 124, 0b1001 << 124), &bounding_box),
             bounding_box.side_length() / 2.0
         );
     }
