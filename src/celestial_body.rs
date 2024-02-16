@@ -19,6 +19,7 @@ impl CelestialBody {
 
     pub fn from_objects(a: &CelestialBody, b: &CelestialBody) -> CelestialBody {
         let mass = a.mass + b.mass;
+        assert!(mass > 0.0);
         let center_of_mass = (a.position * (a.mass / mass)) + (b.position * (b.mass / mass));
         CelestialBody::new(mass, center_of_mass)
     }

@@ -4,7 +4,7 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion};
 pub fn criterion_benchmark(c: &mut Criterion) {
     let CreateBodiesResult {
         cosmic_system,
-        bodies,
+        mut bodies,
         bodies_forces,
         ..
     } = create_bodies(10001);
@@ -14,7 +14,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         glam::DVec3::ONE * 4.0 * cosmic_system::simulation::AU,
     );
 
-    let update_bodies = UpdateBodies {
+    let mut update_bodies = UpdateBodies {
         bounding_box,
         cosmic_system,
         bodies_forces,
@@ -22,7 +22,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
 
     c.bench_function("update_bodies", |b| {
         b.iter(|| {
-            update_bodies.clone().update(black_box(&mut bodies.clone()));
+            black_box(&mut update_bodies).update(black_box(&mut bodies));
         })
     });
 }
