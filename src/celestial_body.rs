@@ -1,34 +1,61 @@
-use comfy::Color;
 use glam::DVec3;
 
-use crate::celestial_object::CelestialObject;
-
-#[derive(Clone, Copy, Debug, PartialEq)]
+// TODO: Undo the SoA transformation
+#[derive(Clone, Copy, Debug)]
 pub struct CelestialBody {
-    pub celestial_object: CelestialObject,
-
-    pub current_force_zero_mass: DVec3,
-    pub current_movement: DVec3,
+    pub position: DVec3,
+    pub mass: f64,
+    pub key: u128,
 }
 
 impl CelestialBody {
-    pub fn update(&mut self) {
-        let delta = self.current_force_zero_mass;
-        self.current_movement += delta;
-        self.celestial_object.position += self.current_movement;
+    pub fn new(mass: f64, position: DVec3) -> Self {
+        Self {
+            mass,
+            position,
+            key: 0,
+        }
+    }
+
+    pub fn from_objects(a: &CelestialBody, b: &CelestialBody) -> CelestialBody {
+        let mass = a.mass + b.mass;
+        let center_of_mass = (a.position * (a.mass / mass)) + (b.position * (b.mass / mass));
+        CelestialBody::new(mass, center_of_mass)
+    }
+
+    #[inline]
+    pub fn distance_to_squared(&self, other: &CelestialBody) -> f64 {
+        self.position.distance_squared(other.position)
+    }
+
+    /// Assume that self has zero mass.
+    pub fn gravitational_force_zero_mass(&self, other: &CelestialBody) -> DVec3 {
+        let delta = other.position - self.position;
+        let squared_distance = delta.length_squared();
+        if squared_distance == 0.0 {
+            return DVec3::ZERO;
+        }
+        let force = other.mass / (squared_distance * squared_distance.sqrt());
+        delta * force
     }
 }
 
-pub struct CelestialBodyDrawing {
-    /// for drawing the body.
-    pub color: Color,
-
-    /// for drawing the body.
-    pub radius: f64,
+impl PartialEq for CelestialBody {
+    fn eq(&self, other: &Self) -> bool {
+        self.key == other.key
+    }
 }
 
-impl CelestialBodyDrawing {
-    pub fn get_drawing_radius(&self) -> f32 {
-        (self.radius.log10() * 0.02) as f32
+impl Eq for CelestialBody {}
+
+impl Ord for CelestialBody {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.key.cmp(&other.key)
+    }
+}
+
+impl PartialOrd for CelestialBody {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
     }
 }

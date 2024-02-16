@@ -1,9 +1,8 @@
-use cosmic_system::simulation;
+use cosmic_system::{celestial_body::CelestialBody, simulation};
 use std::thread;
 
 use comfy::*;
 use cosmic_system::bounding_box::BoundingBox;
-use cosmic_system::celestial_body::CelestialBody;
 use glam::DVec3;
 use simulation::{create_bodies, update_bodies};
 
@@ -36,7 +35,7 @@ fn setup(state: &mut GameState, c: &mut EngineContext) {
         include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/1px.png")),
     );
 
-    let (bodies, bodies_drawing) = create_bodies(10001);
+    let (bodies, bodies_forces, bodies_drawing) = create_bodies(10001);
 
     let particles = world().reserve_entity();
     let mut particles_component = ParticleSystem::with_spawn_rate(bodies.len(), 0.0, || Particle {
@@ -81,10 +80,11 @@ fn setup(state: &mut GameState, c: &mut EngineContext) {
 
     let handle = {
         let bodies = Arc::clone(&state.bodies);
+        let mut bodies_forces = bodies_forces;
         let bounding_box = (&state.bounding_box).clone();
         thread::spawn(move || loop {
             let mut bodies_lock = bodies.lock();
-            update_bodies(bounding_box.clone(), &mut bodies_lock);
+            update_bodies(bounding_box.clone(), &mut bodies_lock, &mut bodies_forces);
         })
     };
 
@@ -103,7 +103,7 @@ fn update(state: &mut GameState, _c: &mut EngineContext) {
         let bodies_lock = state.bodies.lock();
         for (particle, body) in particles.particles.iter_mut().zip(bodies_lock.iter()) {
             particle.lifetime_current = 500.;
-            let position = body.celestial_object.position * inverse_world_size;
+            let position = body.position * inverse_world_size;
             particle.position = Vec2::new(position.x as f32, position.y as f32);
         }
     }

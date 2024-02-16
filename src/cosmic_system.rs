@@ -1,8 +1,7 @@
 use glam::DVec3;
 
 use crate::{
-    bounding_box::BoundingBox, celestial_object::CelestialObject, simulation,
-    z_order::z_order_curve,
+    bounding_box::BoundingBox, celestial_body::CelestialBody, simulation, z_order::z_order_curve,
 };
 
 /// When distance/radius < T, then we can do that Barnes-Hut optimisation
@@ -22,15 +21,15 @@ impl CosmicSystem {
         }
     }
 
-    pub fn gravitational_force_zero_mass(&self, body: &CelestialObject) -> DVec3 {
+    pub fn gravitational_force_zero_mass(&self, body: &CelestialBody) -> DVec3 {
         self.root.gravitational_force(body).unwrap_or_default() * simulation::G
     }
 
-    pub fn add(&mut self, body: CelestialObject) {
+    pub fn add(&mut self, body: CelestialBody) {
         if !self.bounding_box.contains(body.position) {
             return;
         }
-        let z_order = z_order_curve(body.position, self.bounding_box);
+        let z_order = z_order_curve(body.position, &self.bounding_box);
         self.root
             .add(body, z_order, self.bounding_box.side_length());
     }
@@ -39,24 +38,24 @@ impl CosmicSystem {
 enum CosmicSystemNode {
     Empty,
     Leaf {
-        value: CelestialObject,
+        value: CelestialBody,
         /// Remaining bits of the z-order
         z_order: u128,
     },
     Internal {
-        value: CelestialObject,
+        value: CelestialBody,
         comparison_factor: f64,
         children: Box<[CosmicSystemNode; 8]>,
     },
 }
 
 impl CosmicSystemNode {
-    pub fn new_leaf(value: CelestialObject, z_order: u128) -> Self {
+    pub fn new_leaf(value: CelestialBody, z_order: u128) -> Self {
         Self::Leaf { value, z_order }
     }
 
     pub fn new_internal(
-        value: CelestialObject,
+        value: CelestialBody,
         side_length: f64,
         children: Box<[CosmicSystemNode; 8]>,
     ) -> Self {
@@ -67,7 +66,7 @@ impl CosmicSystemNode {
         }
     }
 
-    pub fn gravitational_force(&self, body: &CelestialObject) -> Option<DVec3> {
+    pub fn gravitational_force(&self, body: &CelestialBody) -> Option<DVec3> {
         match self {
             CosmicSystemNode::Empty => None,
             CosmicSystemNode::Leaf { value, .. } => Some(body.gravitational_force_zero_mass(value)),
@@ -94,7 +93,7 @@ impl CosmicSystemNode {
         }
     }
 
-    pub fn add(&mut self, body: CelestialObject, z_order: u128, side_length: f64) {
+    pub fn add(&mut self, body: CelestialBody, z_order: u128, side_length: f64) {
         match self {
             CosmicSystemNode::Empty => *self = CosmicSystemNode::new_leaf(body, z_order),
             CosmicSystemNode::Leaf {
@@ -102,7 +101,7 @@ impl CosmicSystemNode {
                 z_order: mut existing_z_order,
             } => {
                 // Leaf nodes get subdivided into internal nodes
-                let new_value = CelestialObject::from_objects(value, &body);
+                let new_value = CelestialBody::from_objects(value, &body);
                 const ARRAY_REPEAT_VALUE: CosmicSystemNode = CosmicSystemNode::Empty;
                 let mut new_children = Box::new([ARRAY_REPEAT_VALUE; 8]);
 
@@ -117,7 +116,7 @@ impl CosmicSystemNode {
             CosmicSystemNode::Internal {
                 value, children, ..
             } => {
-                *value = CelestialObject::from_objects(value, &body);
+                *value = CelestialBody::from_objects(value, &body);
 
                 // This is a node in the middle of our tree. We need to go deeper
                 let mut z_order = z_order;

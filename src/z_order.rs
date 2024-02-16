@@ -2,7 +2,27 @@ use glam::DVec3;
 
 use crate::bounding_box::BoundingBox;
 
-pub fn z_order_curve(position: DVec3, bounding_box: BoundingBox) -> u128 {
+pub fn z_order_curve(position: DVec3, bounding_box: &BoundingBox) -> u128 {
+    let relative_position = position - bounding_box.min;
+    let scaled_position = relative_position * (u32::MAX as f64 / bounding_box.side_length());
+    let x = scaled_position.x as u32;
+    let y = scaled_position.y as u32;
+    let z = scaled_position.z as u32;
+    // https://graphics.stanford.edu/~seander/bithacks.html#InterleaveTableObvious
+    let mut result: u128 = 0;
+    for i in 0u32..32 {
+        let x_bit = (x >> i) & 1;
+        let y_bit = (y >> i) & 1;
+        let z_bit = (z >> i) & 1;
+
+        let one_after_another = (z_bit << 2) | (y_bit << 1) | x_bit;
+
+        result |= (one_after_another as u128) << (3 * i);
+    }
+    result << 32
+}
+
+pub fn _z_order_curve_slow(position: DVec3, bounding_box: &BoundingBox) -> u128 {
     let relative_position = (position - bounding_box.min).max(DVec3::ZERO);
     let scaled_position = relative_position * (u32::MAX as f64 / bounding_box.side_length());
     let x = scaled_position.x as u32;
@@ -34,7 +54,7 @@ mod tests {
         // 0.5 gets mapped to 0111.. (because we multiply it by 2^32 - 1)
         // 0.75 gets mapped to 1011..
         // so we should get something like 100 010 110 110 110 110 ...
-        let result = z_order_curve(position, bounding_box);
+        let result = z_order_curve(position, &bounding_box);
         assert_eq!(result, 0b100010110110110110110110110110110110110110110110110110110110110110110110110110110110110110110110u128 << 32);
     }
 }
