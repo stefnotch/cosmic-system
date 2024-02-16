@@ -36,7 +36,9 @@ impl CosmicSystem {
         bodies.par_iter_mut().for_each(|body| {
             body.key = z_order_curve(body.position, &self.bounding_box);
         });
-        bodies.par_sort();
+        bodies.par_sort_by_key(|body| body.key);
+
+        assert!(bodies.len() <= self.nodes.len());
 
         // We basically start in the middle.
         // All the bottom - 1 layer nodes come here
@@ -90,6 +92,7 @@ impl CosmicSystem {
                     node.comparison_factor = -1.0;
                     node
                 } else {
+                    assert!(right_node.mass <= 0.0);
                     // No nodes actually exist
                     Default::default()
                 };
@@ -187,6 +190,8 @@ struct CosmicSystemNode {
     index_of_1: u8,
 }
 
+const NEVER_KEY: u128 = u128::MAX;
+
 impl CosmicSystemNode {
     #[inline]
     pub fn body(&self) -> CelestialBody {
@@ -194,6 +199,7 @@ impl CosmicSystemNode {
             position: self.position,
             mass: self.mass,
             key: self.z_order,
+            current_movement: DVec3::ZERO,
         }
     }
 
@@ -206,13 +212,21 @@ impl CosmicSystemNode {
         let mass = a.mass + b.mass;
         assert!(mass > 0.0);
         let position = (a.position * (a.mass / mass)) + (b.position * (b.mass / mass));
+        let key = if index_of_1 == u8::MAX {
+            // The children all have the same key
+            a.key
+        } else {
+            // We want inner nodes to have a key that's never equal to a body's key
+            NEVER_KEY
+        };
         let merged = CelestialBody {
             mass,
             position,
-            key: a.key,
+            key,
+            current_movement: DVec3::ZERO,
         };
 
-        // Special case where the nodes have the same key: We merge them. (comparison_factor has that logic)
+        // If nodes have the same key, then index_of_1 is u8::MAX, which the comparison_factor function handles
         CosmicSystemNode {
             position: merged.position,
             mass: merged.mass,

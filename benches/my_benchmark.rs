@@ -11,14 +11,12 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         let CreateBodiesResult {
             cosmic_system,
             mut bodies,
-            bodies_forces,
             ..
         } = create_bodies(1001);
 
         let mut update_bodies = UpdateBodies {
             bounding_box,
             cosmic_system,
-            bodies_forces,
         };
 
         b.iter(|| {
