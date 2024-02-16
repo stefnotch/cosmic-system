@@ -2,6 +2,7 @@ use glam::DVec3;
 
 #[derive(Clone, Copy, Debug)]
 pub struct CelestialBody {
+    pub index: usize,
     pub position: DVec3,
     pub mass: f64,
     pub key: u128,
@@ -10,8 +11,9 @@ pub struct CelestialBody {
 }
 
 impl CelestialBody {
-    pub fn new(mass: f64, position: DVec3, current_movement: DVec3) -> Self {
+    pub fn new(index: usize, mass: f64, position: DVec3, current_movement: DVec3) -> Self {
         Self {
+            index,
             mass,
             position,
             key: 0,
@@ -23,7 +25,7 @@ impl CelestialBody {
         let mass = a.mass + b.mass;
         assert!(mass > 0.0);
         let center_of_mass = (a.position * (a.mass / mass)) + (b.position * (b.mass / mass));
-        CelestialBody::new(mass, center_of_mass, DVec3::ZERO)
+        CelestialBody::new(0, mass, center_of_mass, DVec3::ZERO)
     }
 
     #[inline]

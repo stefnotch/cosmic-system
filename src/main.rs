@@ -111,7 +111,8 @@ fn update(state: &mut GameState, _c: &mut EngineContext) {
             .unwrap();
         let inverse_world_size = 1.0 / (1.0 * simulation::AU);
         let bodies_lock = state.bodies.lock();
-        for (particle, body) in particles.particles.iter_mut().zip(bodies_lock.iter()) {
+        for body in bodies_lock.iter() {
+            let particle = &mut particles.particles[body.index];
             particle.lifetime_current = 500.;
             let position = body.position * inverse_world_size;
             particle.position = Vec2::new(position.x as f32, position.y as f32);

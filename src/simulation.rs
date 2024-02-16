@@ -1,6 +1,6 @@
 use crate::{
     bounding_box::BoundingBox, celestial_body::CelestialBody,
-    celestial_body_extensions::CelestialBodyDrawing, cosmic_system_2::CosmicSystem,
+    celestial_body_extensions::CelestialBodyDrawing, cosmic_system::CosmicSystem,
 };
 use comfy::{num_traits::Float, *};
 use glam::DVec3;
@@ -33,6 +33,7 @@ pub fn create_bodies(body_count: usize) -> CreateBodiesResult {
     let mut bodies_drawing = Vec::with_capacity(body_count);
     for i in 0..body_count {
         bodies.push(CelestialBody::new(
+            i,
             gen_range(5e20, 5e20 + 5e20),
             DVec3::new(
                 (random_gaussian(0., 1.) * 8. - 4.) * 0.01 + if i % 2 == 0 { 2. } else { -2. },
@@ -51,7 +52,7 @@ pub fn create_bodies(body_count: usize) -> CreateBodiesResult {
             color: predefined_colors[random_usize(0, predefined_colors.len())],
         });
     }
-    bodies[0] = CelestialBody::new(1e40, DVec3::ZERO, DVec3::ZERO);
+    bodies[0] = CelestialBody::new(0, 1e40, DVec3::ZERO, DVec3::ZERO);
     bodies_drawing[0] = CelestialBodyDrawing {
         radius: 7000000000.,
         color: WHITE,

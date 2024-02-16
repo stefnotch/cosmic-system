@@ -40,8 +40,6 @@ pub fn _z_order_curve_slow(position: DVec3, bounding_box: &BoundingBox) -> u128 
     result << 32
 }
 
-// TODO: Write tests
-
 #[cfg(test)]
 mod tests {
     use super::*;
