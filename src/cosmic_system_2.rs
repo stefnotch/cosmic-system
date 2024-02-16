@@ -49,6 +49,7 @@ impl CosmicSystem {
         let mut k = self.nodes.len() / 2;
         // We manually do the first iteration (bodies)
         for i in 0..k {
+            assert!(k == k.next_power_of_two());
             let node_index = k + i;
             if 2 * i + 1 < bodies.len() {
                 // Left and right bodies exist
@@ -96,8 +97,8 @@ impl CosmicSystem {
                     // Left and right nodes truly exist
                     let merged = CelestialBody::from_objects(&left_node.body(), &right_node.body());
                     let index_of_1 = index_of_1(
-                        set_bit(left_node.z_order, left_node.index_of_1, false),
-                        set_bit(right_node.z_order, right_node.index_of_1, true),
+                        set_bit_from_left(left_node.z_order, left_node.index_of_1, false),
+                        set_bit_from_left(right_node.z_order, right_node.index_of_1, true),
                     );
                     self.nodes[node_index] = CosmicSystemNode {
                         position: merged.position,
@@ -158,15 +159,15 @@ impl CosmicSystem {
 }
 
 #[inline]
-fn set_bit(a: u128, index: u8, bit: bool) -> u128 {
+fn set_bit_from_left(a: u128, index: u8, bit: bool) -> u128 {
     if index >= 128 {
         return a;
     }
 
     if bit {
-        a | (1u128 << index)
+        a | ((1u128 << 127) >> index)
     } else {
-        a & !(1u128 << index)
+        a & !((1u128 << 127) >> index)
     }
 }
 
@@ -182,6 +183,7 @@ fn side_length(number_of_splits: u8, bounding_box: &BoundingBox) -> f64 {
 
 /// Comparison factor for barnes hut
 fn comparison_factor(number_of_splits: u8, bounding_box: &BoundingBox) -> f64 {
+    assert!(number_of_splits <= 128);
     if number_of_splits >= 128 {
         // Special case where the nodes occupy the same space
         return -1.0;
