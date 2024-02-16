@@ -2,27 +2,29 @@ use cosmic_system::simulation::{create_bodies, CreateBodiesResult, UpdateBodies}
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
 pub fn criterion_benchmark(c: &mut Criterion) {
-    let CreateBodiesResult {
-        cosmic_system,
-        mut bodies,
-        bodies_forces,
-        ..
-    } = create_bodies(10001);
-
     let bounding_box = cosmic_system::bounding_box::BoundingBox::new(
         glam::DVec3::ONE * -4.0 * cosmic_system::simulation::AU,
         glam::DVec3::ONE * 4.0 * cosmic_system::simulation::AU,
     );
 
-    let mut update_bodies = UpdateBodies {
-        bounding_box,
-        cosmic_system,
-        bodies_forces,
-    };
-
     c.bench_function("update_bodies", |b| {
+        let CreateBodiesResult {
+            cosmic_system,
+            mut bodies,
+            bodies_forces,
+            ..
+        } = create_bodies(1001);
+
+        let mut update_bodies = UpdateBodies {
+            bounding_box,
+            cosmic_system,
+            bodies_forces,
+        };
+
         b.iter(|| {
-            black_box(&mut update_bodies).update(black_box(&mut bodies));
+            for _ in 0..100 {
+                black_box(&mut update_bodies).update(black_box(&mut bodies));
+            }
         })
     });
 }

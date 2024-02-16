@@ -106,16 +106,10 @@ impl CosmicSystem {
                     };
                 } else if left_node.mass > 0.0 {
                     // Only left node truly exists
-                    self.nodes[node_index] = left_node.clone();
+                    self.nodes[node_index] = std::mem::take(&mut self.nodes[2 * node_index]);
                 } else {
                     // No nodes actually exist
-                    self.nodes[node_index] = CosmicSystemNode {
-                        position: DVec3::ZERO,
-                        mass: 0.0,
-                        z_order: 0,
-                        index_of_1: u8::MAX,
-                        comparison_factor: -1.0,
-                    };
+                    self.nodes[node_index] = Default::default();
                 }
             }
 
@@ -135,11 +129,9 @@ impl CosmicSystem {
             bodies: &Vec<CelestialBody>,
         ) -> DVec3 {
             if k >= nodes.len() {
+                // We're querying a single body itself
                 let index = k - nodes.len();
-                // Always valid indices, because a node always has 2 children
-                // (If it only had one body as its child, then it would have a comparison_factor to -1, causing the function to return before getting here)
-                return body.gravitational_force_zero_mass(&bodies[index])
-                    + body.gravitational_force_zero_mass(&bodies[index + 1]);
+                return body.gravitational_force_zero_mass(&bodies[index]);
             }
 
             let node = &nodes[k];
@@ -147,6 +139,8 @@ impl CosmicSystem {
             if node.comparison_factor < body.distance_to_squared(&node_body) {
                 body.gravitational_force_zero_mass(&node_body)
             } else {
+                // Always valid indices, because a node always has 2 children
+                // (If it only had one body as its child, then it would have a comparison_factor to -1, causing the function to return before getting here)
                 helper(2 * k, body, nodes, bodies) + helper(2 * k + 1, body, nodes, bodies)
             }
         }
@@ -155,27 +149,21 @@ impl CosmicSystem {
     }
 }
 
-#[inline]
-fn set_bit_from_left(a: u128, index: u8, bit: bool) -> u128 {
-    if index >= 128 {
-        return a;
-    }
-
-    if bit {
-        a | ((1u128 << 127) >> index)
-    } else {
-        a & !((1u128 << 127) >> index)
-    }
-}
-
 /// Index of the bit where the z-orders differ
-fn index_of_1(a: u128, b: u128) -> u8 {
-    (a ^ b).leading_zeros() as u8
+fn index_of_1(a: u128, b: u128) -> Option<u8> {
+    let index_of_1 = (a ^ b).leading_zeros() as u8;
+    if index_of_1 == 128 {
+        // Special case where the nodes occupy the same space
+        None
+    } else {
+        Some(index_of_1)
+    }
 }
 
 /// Side length for barnes hut
 fn side_length(number_of_splits: u8, bounding_box: &BoundingBox) -> f64 {
-    bounding_box.side_length() / ((1u128 << number_of_splits) as f64)
+    let number_of_cube_splits = number_of_splits / 3;
+    bounding_box.side_length() / ((1u128 << number_of_cube_splits) as f64)
 }
 
 /// Comparison factor for barnes hut
@@ -193,9 +181,9 @@ fn comparison_factor(number_of_splits: u8, bounding_box: &BoundingBox) -> f64 {
 /// The left child is at index 2 * i
 /// The right child is at index 2 * i + 1
 /// If it's a leaf node, then the comparison_factor is < 0
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct CosmicSystemNode {
-    position: glam::DVec3,
+    position: DVec3,
     mass: f64,
     /// The two child nodes
     // children: [usize; 2],
@@ -224,7 +212,7 @@ impl Default for CosmicSystemNode {
     #[inline]
     fn default() -> Self {
         Self {
-            position: glam::DVec3::ZERO,
+            position: DVec3::ZERO,
             mass: 0.0,
             z_order: 0,
             index_of_1: u8::MAX,
@@ -243,21 +231,51 @@ mod tests {
     #[test]
     fn test_side_length() {
         let bounding_box = BoundingBox::new(
-            glam::DVec3::ONE * -4.0 * simulation::AU,
-            glam::DVec3::ONE * 4.0 * simulation::AU,
+            DVec3::ONE * -4.0 * simulation::AU,
+            DVec3::ONE * 4.0 * simulation::AU,
         );
 
         assert_eq!(
-            side_length(index_of_1(0b1000 << 124, 0b0101 << 124), &bounding_box),
+            side_length(
+                index_of_1(0b1000 << 124, 0b0101 << 124).unwrap(),
+                &bounding_box
+            ),
             bounding_box.side_length()
         );
         assert_eq!(
-            side_length(index_of_1(0b1000 << 124, 0b1101 << 124), &bounding_box),
-            bounding_box.side_length() / 2.0
+            side_length(
+                index_of_1(0b1000 << 124, 0b1101 << 124).unwrap(),
+                &bounding_box
+            ),
+            bounding_box.side_length()
         );
         assert_eq!(
-            side_length(index_of_1(0b1000 << 124, 0b1001 << 124), &bounding_box),
-            bounding_box.side_length() / 8.0
+            side_length(
+                index_of_1(0b1000 << 124, 0b1001 << 124).unwrap(),
+                &bounding_box
+            ),
+            bounding_box.side_length() / 2.0
         );
     }
+    /*
+    #[test]
+    fn test_with_equally_spaced_bodies() {
+        let bounding_box = BoundingBox::new(DVec3::ONE * -100.0, DVec3::ONE * 100.0);
+        let mut bodies = vec![
+            CelestialBody::new(1.0, DVec3::new(10.0, 0.0, 0.0)),
+            // CelestialBody::new(1.0, DVec3::new(0.0, 0.0, 0.0)),
+            CelestialBody::new(2.0, DVec3::new(-10.0, 0.0, 0.0)),
+            // CelestialBody::new(1.0, DVec3::new(20.0, 0.0, 0.0)),
+            // CelestialBody::new(1.0, DVec3::new(30.0, 0.0, 0.0)),
+        ];
+
+        let mut cosmic_system = CosmicSystem::new(bounding_box, bodies.len());
+        cosmic_system.set_all(&mut bodies);
+        println!("{:#?}", bodies);
+
+        println!("{:#?}", cosmic_system.nodes);
+
+        let force = cosmic_system.gravitational_force_zero_mass(&bodies[0], &bodies);
+        println!("{:#?}", force);
+    } */
 }
