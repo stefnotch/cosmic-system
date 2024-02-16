@@ -36,12 +36,12 @@ impl CosmicSystem {
         bodies.par_iter_mut().for_each(|body| {
             body.key = z_order_curve(body.position, &self.bounding_box);
         });
-        bodies.sort();
+        bodies.par_sort();
 
         // Clear nodes (just in case)
-        for node in self.nodes.iter_mut() {
-            *node = Default::default();
-        }
+        // for node in self.nodes.iter_mut() {
+        //     *node = Default::default();
+        // }
 
         // We basically start in the middle.
         // All the bottom - 1 layer nodes come here
@@ -121,7 +121,6 @@ impl CosmicSystem {
 
             k /= 2;
         }
-        assert_eq!(k, 0);
     }
 
     pub fn gravitational_force_zero_mass(
@@ -176,8 +175,7 @@ fn index_of_1(a: u128, b: u128) -> u8 {
 
 /// Side length for barnes hut
 fn side_length(number_of_splits: u8, bounding_box: &BoundingBox) -> f64 {
-    let number_of_cube_splits = number_of_splits / 3;
-    bounding_box.side_length() / ((1u128 << number_of_cube_splits) as f64)
+    bounding_box.side_length() / ((1u128 << number_of_splits) as f64)
 }
 
 /// Comparison factor for barnes hut
